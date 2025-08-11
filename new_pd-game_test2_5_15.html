@@ -1,0 +1,1264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>VLSI PD Game - Complete Physical Design Flow Visualization</title>
+<style>
+  body {
+    margin: 0;
+    font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #eaeaea;
+    user-select: none;
+  }
+  #topToolbar {
+    background: #007acc;
+    color: white;
+    padding: 6px 15px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+    font-weight: 600;
+    user-select: none;
+  }
+  #topToolbar > div {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  #topToolbar button, #topToolbar .toggle-btn {
+    cursor: pointer;
+    border: none;
+    border-radius: 5px;
+    padding: 6px 14px;
+    font-size: 14px;
+    background-color: #059;
+    color: white;
+    transition: background-color 0.3s ease;
+    user-select: none;
+  }
+  #topToolbar button:hover, #topToolbar .toggle-btn:hover {
+    background-color: #005a9e;
+  }
+  #topToolbar button.active, #topToolbar .toggle-btn.active {
+    background-color: #00aaff;
+  }
+  #container {
+    display: flex;
+    max-width: 1300px;
+    margin: 10px auto;
+    gap: 15px;
+  }
+  #gameArea {
+    position: relative;
+    border: 1px solid #ccc;
+    background: #fefefe;
+    box-shadow: 0 0 18px rgba(0,0,0,0.15);
+  }
+  #gameCanvas {
+    display: block;
+    background: #f9f9f9;
+    cursor: crosshair;
+  }
+  #tooltip {
+    position: absolute;
+    background: rgba(0, 0, 0, 0.85);
+    color: white;
+    font-size: 13px;
+    padding: 4px 8px;
+    border-radius: 5px;
+    pointer-events: none;
+    user-select: none;
+    visibility: hidden;
+    z-index: 100;
+  }
+  #sidePanel {
+    width: 340px;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 0 16px rgba(0,0,0,0.15);
+    padding: 22px 20px;
+    display: flex;
+    flex-direction: column;
+  }
+  h2, h3 {
+    margin-top: 0;
+    margin-bottom: 14px;
+    font-weight: 700;
+    color: #222;
+  }
+  #instructions {
+    flex-grow: 1;
+    overflow-y: auto;
+    font-size: 14px;
+    color: #444;
+    line-height:1.5;
+    margin-bottom: 22px;
+  }
+  .btn-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .toggle-btn {
+    background-color: #cbd6e2;
+    color: #2c3e50;
+    padding: 5px 10px;
+    border-radius: 5px;
+    text-align: center;
+    font-size: 13px;
+    user-select: none;
+    min-width: 90px;
+  }
+  .toggle-btn.active {
+    background-color: #125dff;
+    color: white;
+  }
+  #scoreTime {
+    font-weight: 700;
+    padding: 10px 14px;
+    border-radius: 8px;
+    background: #007accd9;
+    color: white;
+    text-align: center;
+    user-select: none;
+  }
+  #counterDisplay {
+    margin-top: 8px;
+    font-weight: 600;
+    color: #555;
+    text-align: center;
+  }
+  /* Scrollbar for instructions */
+  #instructions::-webkit-scrollbar {
+    width: 8px;
+  }
+  #instructions::-webkit-scrollbar-track {
+    background: #f1f1f1;
+  }
+  #instructions::-webkit-scrollbar-thumb {
+    background: #a3b1c3;
+    border-radius: 4px;
+  }
+</style>
+</head>
+<body>
+
+<div id="topToolbar" role="toolbar" aria-label="Stage and Layer Controls" tabindex="0">
+  <div aria-label="Stage Navigation">
+    <button id="btnMacro" class="active" title="Macro Placement Stage">Macro Placement</button>
+    <button id="btnPowerPlan" title="Power Plan Stage">Power Plan</button>
+    <button id="btnStdManual" title="Standard Cell Manual Placement">StdCell Manual</button>
+    <button id="btnStdAuto" title="Standard Cell Auto Placement">StdCell Auto</button>
+    <button id="btnCTSManual" title="Clock Tree Synthesis Manual">CTS Manual</button>
+    <button id="btnCTSAuto" title="Clock Tree Synthesis Automatic">CTS Auto</button>
+    <button id="btnRouteManual" title="Routing Manual">Routing Manual</button>
+    <button id="btnRouteAuto" title="Routing Automatic">Routing Auto</button>
+  </div>
+  <div aria-label="Metal Layer and Via Visibility" style="margin-left:auto; display:flex; gap:10px; flex-wrap:wrap; max-width: 600px;">
+    <button class="toggle-btn active" data-layer="all" title="Toggle All Layers and Vias">All</button>
+    <button class="toggle-btn active" data-layer="M1" title="Toggle Metal 1 (Power rails)">Metal 1</button>
+    <button class="toggle-btn active" data-layer="M2" title="Toggle Metal 2 (Power rails)">Metal 2</button>
+    <button class="toggle-btn active" data-layer="M3" title="Toggle Metal 3 (Data routing)">Metal 3</button>
+    <button class="toggle-btn active" data-layer="M4" title="Toggle Metal 4 (Vertical clock)">Metal 4</button>
+    <button class="toggle-btn active" data-layer="M5" title="Toggle Metal 5 (Horizontal clock)">Metal 5</button>
+    <button class="toggle-btn active" data-layer="M6" title="Toggle Metal 6 (Vertical power)">Metal 6</button>
+    <button class="toggle-btn active" data-layer="M7" title="Toggle Metal 7 (Global power)">Metal 7</button>
+    <button class="toggle-btn active" data-layer="via01" title="Toggle Via 01 (M1-M2)">Via 01</button>
+    <button class="toggle-btn active" data-layer="via12" title="Toggle Via 12 (M2-M3)">Via 12</button>
+    <button class="toggle-btn active" data-layer="via23" title="Toggle Via 23 (M3-M4)">Via 23</button>
+    <button class="toggle-btn active" data-layer="via34" title="Toggle Via 34 (M4-M5)">Via 34</button>
+    <button class="toggle-btn active" data-layer="via45" title="Toggle Via 45 (M5-M6)">Via 45</button>
+    <button class="toggle-btn active" data-layer="via56" title="Toggle Via 56 (M6-M7)">Via 56</button>
+  </div>
+</div>
+
+<div id="container">
+  <div id="gameArea" aria-label="VLSI Physical Design Canvas Area" style="width:1200px; height:820px;">
+    <canvas id="gameCanvas" width="1200" height="820" tabindex="0" role="graphics-document" aria-label="VLSI physical design canvas"></canvas>
+    <div id="tooltip"></div>
+    <div id="scoreTime" aria-live="polite">Score: 0 | Time: 0s | Stage: Macro Placement</div>
+    <div id="counterDisplay" aria-live="polite">Macros: 0 | StdCells: 0</div>
+  </div>
+  <div id="sidePanel" aria-live="polite" aria-atomic="true">
+    <h2>VLSI PD Game Stages & Guidelines</h2>
+    <div id="instructions">
+      <p><strong>Stage Flow:</strong></p>
+      <ol>
+        <li><b>Macro Placement (Floorplan):</b> Drag and drop yellow macro blocks inside the CORE region. Ensure the macros have VDD, VSS, CLK, and DATA pins aligned to power and clock grids.</li>
+        <li><b>Power Plan:</b> Shows 7 metal layers (M1-M7) with color-coded stripes and vias. Use toggles to view metal and via layers. Power (VDD/VSS) and clock signals use separate metal layers per design rules.</li>
+        <li><b>Standard Cell Placement:</b> Auto or manual placement of blue standard cells aligned in rows. Power pins are only on top (using metal stacking & vias). Ensure pins connect to power rails.</li>
+        <li><b>Clock Tree Synthesis (CTS):</b> Clock distribution built as a balanced tree on metal layers (M7, M6, M5). Manual and automatic CTS modes available for clock routing visualization.</li>
+        <li><b>Routing:</b> Manual or automatic routing of Data, VDD, VSS, and Clock nets. Routing layers (e.g. M3 for DATA) are shown as per toggles.</li>
+      </ol>
+      <p><strong>Tooltips:</strong> Hover on metal lines or pins to see metal layer and net type (e.g. "M7 VDD", "M5 CLK").</p>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const canvas = document.getElementById("gameCanvas");
+  const ctx = canvas.getContext("2d");
+  const tooltip = document.getElementById("tooltip");
+  const scoreTime = document.getElementById("scoreTime");
+  const counterDisplay = document.getElementById("counterDisplay");
+  const layerButtons = document.querySelectorAll("#topToolbar .toggle-btn");
+
+  const core = { x: 320, y: 150, w: 820, h: 600 };
+  const macroW = 80;
+  const macroH = 80;
+  const stdCellHeight = Math.max(10, Math.round(macroH / 8)); // ~1/8 of macro height for metal stacking
+  const stdCellWidth = 50;
+  const pitch = stdCellHeight;
+
+  // State variables
+  let stage = "macroPlacement";
+  let score = 0;
+  let time = 0;
+  let timerInterval = null;
+
+  // Pins minimum enforcement per macro and std cell
+  // For simplicity here pins represented by presence of correct colors and connection logic
+
+  // Macros and Std Cells data
+  let macros = [
+    { x: 340, y: 160, w: macroW, h: macroH, color: "yellow", label: "Macro 1" },
+    { x: 440, y: 160, w: macroW, h: macroH, color: "yellow", label: "Macro 2" },
+    { x: 540, y: 160, w: macroW, h: macroH, color: "yellow", label: "Macro 3" },
+    { x: 640, y: 160, w: macroW, h: macroH, color: "yellow", label: "Macro 4" },
+  ];
+
+  let stdCells = [];
+  for(let i=0; i<25; i++){
+    stdCells.push({ x:-100, y:-100, w: stdCellWidth, h: stdCellHeight, color: "#2080d0", label:`StdCell ${i+1}`});
+  }
+
+  // Ports - power, clock, and data
+  const powerPorts = [
+    { x: core.x - 60, y: core.y - 40, w: 40, h: 20, color: "#d22", label: "VDD Port", net: "VDD" },
+    { x: core.x + core.w + 20, y: core.y - 40, w: 40, h: 20, color: "#292", label: "VSS Port", net: "VSS" }
+  ];
+  const clockPort = { x: core.x - 100, y: core.y + 50, w: 40, h: 40, color: "#22f", label: "Clock Port", net: "CLK" };
+  const dataPorts = [{ x: core.x + core.w / 2 - 20, y: core.y + core.h + 30, w: 40, h: 25, color: "#000", label: "DATA Port", net: "DATA" }];
+
+  // Arrays to store routed nets with associated metal layers
+  let routedPowerTracks = { VDD: [], VSS: [] };  // [{layer, points:[]}]
+  let routedCTSNetwork = [];  // [{layer, points:[]}]
+  let routedDataNetwork = [];  // [{layer, points:[]}]
+
+  // Metal and via definitions with colors and widths
+  const metalLayers = [
+    { name: "M7", color: "#d22", orientation: "horizontal", width: 10 },
+    { name: "M6", color: "#e67e22", orientation: "vertical", width: 7 },
+    { name: "M5", color: "#297ab9", orientation: "horizontal", width: 6 },
+    { name: "M4", color: "#2ea15a", orientation: "vertical", width: 5 },
+    { name: "M3", color: "#8e44ad", orientation: "horizontal", width: 3 },
+    { name: "M2", color: "#2080d0", orientation: "vertical", width: 3 },
+    { name: "M1", color: "#1abc9c", orientation: "horizontal", width: 2 }
+  ];
+
+  const viaLayers = [
+    { name: "via01", color:"#b33939" },
+    { name: "via12", color: "#b37439" },
+    { name: "via23", color: "#6272a4" },
+    { name: "via34", color: "#2d928d" },
+    { name: "via45", color: "#674172" },
+    { name: "via56", color: "#6e2e1f" }
+  ];
+
+  // Visibility state for layers and vias, initialized to true
+  let layerVisibility = {
+    all: true,
+    M1: true, M2: true, M3: true, M4: true, M5: true, M6: true, M7: true,
+    via01: true, via12: true, via23: true, via34: true, via45: true, via56: true
+  };
+
+  // Toolbar buttons & layer toggles
+  const btnMacro = document.getElementById("btnMacro");
+  const btnPowerPlan = document.getElementById("btnPowerPlan");
+  const btnStdManual = document.getElementById("btnStdManual");
+  const btnStdAuto = document.getElementById("btnStdAuto");
+  const btnCTSManual = document.getElementById("btnCTSManual");
+  const btnCTSAuto = document.getElementById("btnCTSAuto");
+  const btnRouteManual = document.getElementById("btnRouteManual");
+  const btnRouteAuto = document.getElementById("btnRouteAuto");
+
+  function updateStatus(){
+    scoreTime.textContent = `Score: ${score} | Time: ${time}s | Stage: ${stage}`;
+    let macroCount = macros.filter(b=> isInsideCore(b)).length;
+    let stdCellCount = stdCells.filter(b=> isInsideCore(b)).length;
+    counterDisplay.textContent = `Macros: ${macroCount} | StdCells: ${stdCellCount}`;
+  }
+
+  // Utility functions
+  function isInsideCore(b){
+    return b.x >= core.x && b.y >= core.y && b.x+b.w <= core.x + core.w && b.y + b.h <= core.y+core.h;
+  }
+
+  function snapToGrid(v){ return Math.round(v / pitch) * pitch; }
+
+  function clearActiveButtons(){
+    [btnMacro, btnPowerPlan, btnStdManual, btnStdAuto, btnCTSManual, btnCTSAuto, btnRouteManual, btnRouteAuto].forEach(b => b.classList.remove("active"));
+  }
+  // Select stage helper
+  function selectStage(s){
+    clearActiveButtons();
+    switch(s){
+      case "macroPlacement":
+        btnMacro.classList.add("active");
+        stage="macroPlacement";
+        break;
+      case "powerPlan":
+        btnPowerPlan.classList.add("active");
+        stage="powerPlan";
+        break;
+      case "stdManual":
+        btnStdManual.classList.add("active");
+        stage="stdCellManual";
+        break;
+      case "stdAuto":
+        btnStdAuto.classList.add("active");
+        stage="stdCellAuto";
+        break;
+      case "ctsManual":
+        btnCTSManual.classList.add("active");
+        stage="ctsManual";
+        break;
+      case "ctsAuto":
+        btnCTSAuto.classList.add("active");
+        stage="ctsAuto";
+        break;
+      case "routingManual":
+        btnRouteManual.classList.add("active");
+        stage="routingManual";
+        break;
+      case "routingAuto":
+        btnRouteAuto.classList.add("active");
+        stage="routingAuto";
+        break;
+    }
+    score = 0;
+    time = 0;
+    timerStart();
+    updateStatus();
+    if(stage === "stdCellManual" || stage === "stdCellAuto"){
+      autoPlaceStdCellsNearMacros();
+    }
+    if(stage === "powerPlan"){
+      routePowerNets();
+    }
+    if(stage === "ctsAuto"){
+      buildClockTree();
+    }
+    drawAll();
+  }
+
+  btnMacro.onclick = () => selectStage("macroPlacement");
+  btnPowerPlan.onclick = () => selectStage("powerPlan");
+  btnStdManual.onclick = () => selectStage("stdManual");
+  btnStdAuto.onclick = () => selectStage("stdAuto");
+  btnCTSManual.onclick = () => selectStage("ctsManual");
+  btnCTSAuto.onclick = () => selectStage("ctsAuto");
+  btnRouteManual.onclick = () => selectStage("routingManual");
+  btnRouteAuto.onclick = () => selectStage("routingAuto");
+
+  // Auto place std cells near macros in rows
+  function autoPlaceStdCellsNearMacros(){
+    let minX = Infinity, maxX = -Infinity, minY = Infinity;
+    macros.forEach(m=>{
+      if(m.x < minX) minX = m.x;
+      if(m.x+m.w > maxX) maxX = m.x+m.w;
+      if(m.y < minY) minY = m.y;
+    });
+    let startX = maxX + 10;
+    if(startX+stdCellWidth > core.x + core.w) startX = minX;
+    let startY = minY;
+
+    const perRow = 6;
+    let row = 0, col = 0;
+    for(let i=0; i<stdCells.length; i++){
+      let x = startX + col*stdCellWidth;
+      let y = startY + row*stdCellHeight;
+
+      // keep inside core
+      if(x + stdCellWidth > core.x + core.w){
+        x = startX;
+        row++;
+        y = startY + row*stdCellHeight;
+      }
+      if(y + stdCellHeight > core.y + core.h){
+        y = core.y + core.h - stdCellHeight - 8;
+      }
+      stdCells[i].x = x;
+      stdCells[i].y = y;
+      col++;
+      if(col >= perRow){
+        col = 0;
+        row++;
+      }
+    }
+  }
+
+  // Draw all elements on canvas
+  function drawAll(){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    // Draw core block
+    ctx.fillStyle = "#ddd";
+    ctx.fillRect(core.x, core.y, core.w, core.h);
+    ctx.strokeStyle="#444";
+    ctx.lineWidth = 4;
+    ctx.strokeRect(core.x, core.y, core.w, core.h);
+
+    // Draw grid lines for pitch
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = "#bbb";
+    for(let y=core.y; y<=core.y+core.h; y+=pitch){
+      ctx.beginPath();
+      ctx.moveTo(core.x, y);
+      ctx.lineTo(core.x+core.w, y);
+      ctx.stroke();
+    }
+    for(let x=core.x; x<=core.x+core.w; x+=pitch){
+      ctx.beginPath();
+      ctx.moveTo(x, core.y);
+      ctx.lineTo(x, core.y+core.h);
+      ctx.stroke();
+    }
+
+    // Decide layers and nets to display by stage and toggles
+
+    if(stage === "powerPlan"){
+      drawPowerLayers();
+      drawVias();
+      drawPortBlocks();
+      drawBlocks();
+      drawPowerNetTracks();
+      drawTooltipIfAny();
+    } else {
+      // Default view: draw routed lines for nets according to connectivity and toggle states
+      drawPortBlocks();
+      drawBlocks();
+      drawUserNets();
+      drawCTSNetwork();
+      drawTooltipIfAny();
+    }
+
+    updateStatus();
+  }
+
+  // Draw macros, std cells, ports with pins (power and clock and data)
+  function drawBlocks(){
+    macros.forEach(b => drawBlockWithPins(b));
+    stdCells.forEach(b => drawBlockWithPins(b));
+  }
+
+  function drawPortBlocks(){
+    powerPorts.forEach(p => drawPortBlock(p));
+    dataPorts.forEach(p => drawPortBlock(p));
+    drawBlockWithPins(clockPort);
+  }
+
+  function drawBlockWithPins(block){
+    ctx.fillStyle = block.color;
+    ctx.strokeStyle = "#555";
+    ctx.lineWidth = 2;
+    ctx.fillRect(block.x, block.y, block.w, block.h);
+    ctx.strokeRect(block.x, block.y, block.w, block.h);
+
+    ctx.fillStyle = "#222";
+    ctx.font = block.w < 55 ? "10px Arial" : "14px Arial";
+    ctx.textAlign = "center";
+    ctx.fillText(block.label, block.x + block.w/2, block.y + block.h/2 + 6);
+
+    drawPinsForBlock(block);
+  }
+  function drawPortBlock(p){
+    ctx.fillStyle = p.color;
+    ctx.strokeStyle = "#222";
+    ctx.lineWidth = 2;
+    ctx.fillRect(p.x, p.y, p.w, p.h);
+    ctx.strokeRect(p.x, p.y, p.w, p.h);
+
+    ctx.fillStyle = "white";
+    ctx.font = "13px Arial";
+    ctx.textAlign = "center";
+    ctx.fillText(p.label, p.x + p.w/2, p.y + p.h/2 + 6);
+  }
+
+  // Draw pins for VDD (red), VSS (green), CLK (blue), DATA (black) only on top of cell - stacked metal + via
+  function drawPinsForBlock(block){
+    const pinWidth = block.w * 0.3;
+    const pinHeight = stdCellHeight / 8;  // approx 1/8th cell height stack size
+    const pinX = block.x + block.w * 0.35;
+
+    if(layerVisibility["M1"]){
+      // VDD pin on top
+      ctx.fillStyle = "red";
+      ctx.fillRect(pinX, block.y - pinHeight * 1.5, pinWidth, pinHeight);
+      drawViaStack(pinX + pinWidth/2, block.y - pinHeight*1.5 + pinHeight / 2, "VDD");
+      // VSS pin below VDD pin (placed just below VDD pin, stacked metal and vias)
+      ctx.fillStyle = "green";
+      ctx.fillRect(pinX, block.y - pinHeight * 0.4, pinWidth, pinHeight);
+      drawViaStack(pinX + pinWidth/2, block.y - pinHeight*0.4 + pinHeight / 2, "VSS");
+
+      // CLK pin left vertical bar up top
+      ctx.fillStyle = "blue";
+      ctx.fillRect(block.x - pinHeight*1.1, block.y - pinHeight * 1.5, pinHeight*1.2, pinHeight*4);
+      drawViaStack(block.x - pinHeight * 0.6, block.y - pinHeight*1.5 + pinHeight, "CLK");
+
+      // DATA pin left vertical bar below CLK pin
+      ctx.fillStyle = "black";
+      ctx.fillRect(block.x - pinHeight*1.1, block.y - pinHeight * 0.4, pinHeight*1.2, pinHeight*2);
+      drawViaStack(block.x - pinHeight * 0.6, block.y - pinHeight*0.4 + pinHeight, "DATA");
+    }
+  }
+
+  // Draw stacked vias for pin connection metaphorically
+  function drawViaStack(cx, cy, netType){
+    if(!layerVisibility["via01"]) return;
+    ctx.fillStyle = netType === "VDD" ? "#b33939" :
+                    netType === "VSS" ? "#329932" :
+                    netType === "CLK" ? "#2e7bd1" : "#000";
+    // draw 3 small stacked circles to indicate vias
+    for(let i=0; i<3; i++){
+      ctx.beginPath();
+      ctx.arc(cx, cy - i*6, 3, 0, 2*Math.PI);
+      ctx.fill();
+    }
+  }
+
+  // Draw 7 metal power and clock layers in power plan stage
+  // Metal trunks coordinates (horizontal or vertical stripes)
+  let metalTrunks = {};
+  let viaLocations = {};
+
+  function initializePowerGrid(){
+    metalTrunks = {};
+    viaLocations = {};
+
+    // M7 horizontal, spaced 50px vertically inside core
+    metalTrunks["M7"] = [];
+    let pitchM7 = 50;
+    for(let y=core.y; y<=core.y+core.h; y+=pitchM7){
+      metalTrunks["M7"].push({x1: core.x, y1: y, x2: core.x + core.w, y2: y});
+    }
+
+    // M6 vertical 50px pitch
+    metalTrunks["M6"] = [];
+    let pitchM6 = 50;
+    for(let x=core.x; x<=core.x +core.w; x+=pitchM6){
+      metalTrunks["M6"].push({x1:x, y1: core.y, x2: x, y2: core.y + core.h});
+    }
+    
+    // M5 clock horizontal stripes 60px pitch
+    metalTrunks["M5"] = [];
+    let pitchM5 = 60;
+    for(let y=core.y; y<=core.y+core.h; y+=pitchM5){
+      metalTrunks["M5"].push({x1: core.x, y1: y + 20, x2: core.x + core.w, y2: y+20});
+    }
+
+    // M4 clock vertical stripes 70px pitch
+    metalTrunks["M4"] = [];
+    let pitchM4 = 70;
+    for(let x=core.x; x<=core.x + core.w; x+=pitchM4){
+      metalTrunks["M4"].push({x1: x + 20, y1: core.y, x2: x+20, y2: core.y + core.h});
+    }
+
+    // M3 horizontal routing stripes, cell pitch spaced
+    metalTrunks["M3"] = [];
+    let pitchM3 = pitch;
+    for(let y=core.y; y<=core.y+core.h; y+=pitchM3){
+      metalTrunks["M3"].push({x1: core.x, y1: y + pitchM3/3, x2: core.x+core.w, y2: y + pitchM3/3});
+    }
+
+    // M2 vertical power rails + taps
+    metalTrunks["M2"] = [];
+    for(let x=core.x; x<=core.x+core.w; x+= stdCellWidth*2){
+      metalTrunks["M2"].push({x1:x, y1: core.y, x2: x, y2: core.y+core.h});
+    }
+
+    // M1 horizontal rails for std cells (VDD top row, VSS bottom row)
+    metalTrunks["M1"] = [];
+    for(let y=core.y; y<=core.y+core.h; y+= pitch){
+      metalTrunks["M1"].push({x1: core.x, y1: y, x2: core.x+core.w, y2: y});
+    }
+
+    // Vias at intersection points
+    // For each via layer assume grid intersections between corresponding metal trunks
+    
+    viaLocations["via56"] = [];
+    let idCounter = 0;
+    for(let y=core.y; y<=core.y+core.h; y+= pitchM7){
+      for(let x=core.x; x<=core.x+core.w; x+= pitchM6){
+        viaLocations["via56"].push({x:x, y:y, id:`via56_${idCounter++}`});
+      }
+    }
+    viaLocations["via45"] = [];
+    idCounter=0;
+    for(let y=core.y; y<=core.y+core.h; y+= pitchM5){
+      for(let x=core.x; x<=core.x+core.w; x+= pitchM6){
+        viaLocations["via45"].push({x:x, y:y+20, id:`via45_${idCounter++}`});
+      }
+    }
+    viaLocations["via34"] = [];
+    idCounter=0;
+    for(let y=core.y; y<=core.y+core.h; y+= pitchM5){
+      for(let x=core.x; x<=core.x+core.w; x+= pitchM4){
+        viaLocations["via34"].push({x:x+20, y:y+20, id:`via34_${idCounter++}`});
+      }
+    }
+    viaLocations["via23"] = [];
+    idCounter=0;
+    for(let y=core.y; y<=core.y+core.h; y+= pitchM3){
+      for(let x=core.x; x<=core.x+core.w; x+= pitchM4){
+        viaLocations["via23"].push({x:x+20, y:y+(pitchM3/3), id:`via23_${idCounter++}`});
+      }
+    }
+    viaLocations["via12"] = [];
+    idCounter=0;
+    for(let y=core.y; y<=core.y+core.h; y+= pitch){
+      for(let x=core.x; x<=core.x+core.w; x+= stdCellWidth*2){
+        viaLocations["via12"].push({x:x, y:y+(pitch/3), id:`via12_${idCounter++}`});
+      }
+    }
+    viaLocations["via01"] = [];
+    idCounter=0;
+    for(let y=core.y; y<=core.y+core.h; y+= pitch){
+      for(let x=core.x; x<=core.x+core.w; x+= stdCellWidth*2){
+        viaLocations["via01"].push({x:x, y:y, id:`via01_${idCounter++}`});
+      }
+    }
+  }
+
+  // Draw metal trunks for a given layer respecting visibility toggles
+  function drawMetalLayer(layerName){
+    if(!layerVisibility[layerName]) return;
+    const layerDef = metalLayers.find(l => l.name === layerName);
+    if(!layerDef) return;
+
+    ctx.strokeStyle = layerDef.color;
+    ctx.lineCap = "round";
+    ctx.lineWidth = layerDef.width;
+
+    const segs = metalTrunks[layerName] || [];
+    segs.forEach(({x1,y1,x2,y2})=>{
+      ctx.beginPath();
+      ctx.moveTo(x1,y1);
+      ctx.lineTo(x2,y2);
+      ctx.stroke();
+    });
+  }
+
+  function drawAllMetalLayers(){
+    // Draw from bottom up (M1 bottom to M7 top)
+    metalLayers.forEach(layer => drawMetalLayer(layer.name));
+  }
+
+  // Draw vias circles and IDs
+  function drawViaLayer(viaName){
+    if(!layerVisibility[viaName]) return;
+    const viaDef = viaLayers.find(v => v.name === viaName);
+    if(!viaDef) return;
+
+    const vias = viaLocations[viaName] || [];
+    ctx.fillStyle = viaDef.color;
+    vias.forEach(({x,y,id})=>{
+      ctx.beginPath();
+      ctx.arc(x, y, 4, 0, 2*Math.PI);
+      ctx.fill();
+
+      ctx.fillStyle = "#111";
+      ctx.font = "8px monospace";
+      ctx.textAlign = "center";
+      ctx.fillText(id, x, y+14);
+      ctx.fillStyle = viaDef.color;
+    });
+  }
+
+  function drawAllViaLayers(){
+    viaLayers.forEach(v => drawViaLayer(v.name));
+  }
+
+  // Draw power plan with selected visible layers
+  function drawPowerLayers(){
+    drawAllMetalLayers();
+    drawAllViaLayers();
+  }
+
+  // Connect routed power nets from power ports to cell pins
+  // This function creates routedPowerTracks arrays for VDD and VSS nets.
+  function routePowerNets(){
+    routedPowerTracks = {VDD:[], VSS:[]};
+
+    // Simple power routing from VDD and VSS ports to power rails and pins
+    // Connect each port to nearest M7 (top metal) trunk (horizontal)
+    powerPorts.forEach(port => {
+      let net = port.net;
+      const m7Trunks = metalTrunks["M7"] || [];
+      if(m7Trunks.length === 0) return;
+      // Find closest horizontal M7 trunk y-coordinate to port center y-position
+      const portCenterY = port.y + port.h / 2;
+      const closestM7 = m7Trunks.reduce((prev,curr) => Math.abs(curr.y1 - portCenterY) < Math.abs(prev.y1 - portCenterY) ? curr : prev);
+      const portCenterX = port.x + port.w / 2;
+
+      // Route port center to left end of M7 rail (simulate vertical then horizontal segments)
+      routedPowerTracks[net].push({
+        layer: "M7",
+        points: [
+          {x: portCenterX, y: portCenterY},
+          {x: portCenterX, y: closestM7.y1},
+          {x: closestM7.x1, y: closestM7.y1},
+          {x: closestM7.x2, y: closestM7.y2}
+        ]
+      });
+    });
+
+    // Connect macros and std cells pins to power rails (M1, M2 vertical to M6 vertical to M7 horizontal)
+    const connectBlockPowerPin = (block, net) => {
+      if(!isInsideCore(block)) return;
+
+      let pinX = block.x + block.w * 0.5;
+      let pinYTop = block.y - stdCellHeight / 8 * 1.5;
+      let pinYBottom = block.y - stdCellHeight / 8 * 0.4;  // For VSS close below VDD pin
+
+      let targetYPin = net === "VDD" ? pinYTop : pinYBottom;
+      const m7Trunks = metalTrunks["M7"] || [];
+      const m6Trunks = metalTrunks["M6"] || [];
+      const m2Trunks = metalTrunks["M2"] || [];
+
+      if(m7Trunks.length === 0 || m6Trunks.length === 0 || m2Trunks.length === 0) return;
+
+      // Find closest trunks for each layer
+      const closestM7 = m7Trunks.reduce((prev,curr) => Math.abs(curr.y1 - targetYPin) < Math.abs(prev.y1 - targetYPin) ? curr: prev);
+      const closestM6 = m6Trunks.reduce((prev,curr) => Math.abs(curr.x1 - pinX) < Math.abs(prev.x1 - pinX) ? curr: prev);
+      const closestM2 = m2Trunks.reduce((prev,curr) => Math.abs(curr.x1 - pinX) < Math.abs(prev.x1 - pinX) ? curr: prev);
+
+      // Build route points for stacked metal layers & vias (M2->M6->M7)
+      const points = [
+        {x: pinX, y: targetYPin},
+        {x: closestM2.x1, y: targetYPin},
+        {x: closestM2.x1, y: core.y},
+        {x: closestM6.x1, y: core.y},
+        {x: closestM6.x1, y: closestM7.y1},
+        {x: closestM7.x2, y: closestM7.y2}
+      ];
+      routedPowerTracks[net].push( { layer: "M2->M6->M7", points } );
+    };
+
+    [...macros, ...stdCells].forEach(block => {
+      connectBlockPowerPin(block, "VDD");
+      connectBlockPowerPin(block, "VSS");
+    });
+  }
+
+  // Build clock tree routing network - balanced tree on M7 (horizontal) - M6 (vertical) - M5 (horizontal)
+  function buildClockTree(){
+    routedCTSNetwork = [];
+
+    const sinks = [...macros, ...stdCells].filter(b => isInsideCore(b))
+      .map(b => ({x: b.x + b.w/2, y: b.y, block:b}));
+
+    const root = {x: clockPort.x + clockPort.w/2, y: clockPort.y + clockPort.h/2};
+
+    function recursiveCTS(points, rootNode, depth=0){
+      if(points.length === 0) return;
+      if(points.length === 1){
+        routedCTSNetwork.push({layer: "M5", points: manhattanPath(rootNode, points[0])});
+        return;
+      }
+      const horizontal = depth % 2 === 0;
+      const coord = horizontal ? "x" : "y";
+      points.sort((a,b) => a[coord] - b[coord]);
+      const mid = Math.floor(points.length / 2);
+      const leftPoints = points.slice(0,mid);
+      const rightPoints = points.slice(mid);
+
+      let branchPoint;
+      if(horizontal) branchPoint = {x: points[mid][coord], y: rootNode.y};
+      else branchPoint = {x: rootNode.x, y: points[mid][coord]};
+
+      // Root to branch on M7 and M6 layers
+      routedCTSNetwork.push({layer: "M7", points: manhattanPath(rootNode, {x: branchPoint.x, y: rootNode.y})});
+      routedCTSNetwork.push({layer: "M6", points: manhattanPath({x: branchPoint.x, y: rootNode.y}, branchPoint)});
+
+      // Recurse
+      recursiveCTS(leftPoints, branchPoint, depth+1);
+      recursiveCTS(rightPoints, branchPoint, depth+1);
+    }
+
+    recursiveCTS(sinks, root, 0);
+  }
+
+  // Helper manhattan path generator
+  function manhattanPath(src, dst){
+    return [ {x: src.x, y: src.y}, {x: dst.x, y: src.y}, {x: dst.x, y: dst.y} ]
+  }
+
+  // Draw routed nets to canvas
+  function drawUserNets(){
+    ctx.lineCap = "round";
+    // Power nets
+    for(let netName of ["VDD","VSS"]){
+      for(let track of routedPowerTracks[netName]){
+        if(!layerVisibility[track.layer.split("->")[0]]) continue;
+
+        ctx.strokeStyle = netName === "VDD" ? "#d22" : "#292";
+        ctx.lineWidth = metalLayers.find(l => l.name === track.layer.split("->")[0])?.width || 4;
+        ctx.beginPath();
+        ctx.moveTo(track.points[0].x, track.points[0].y);
+        for(let i=1; i<track.points.length; i++){
+          ctx.lineTo(track.points[i].x, track.points[i].y);
+        }
+        ctx.stroke();
+      }
+    }
+    // Clock nets from user drawn or auto CTS routing
+    if(stage === "ctsManual" || stage === "ctsAuto" || stage === "routingManual" || stage === "routingAuto"){
+      for(let line of clockLines){
+        ctx.strokeStyle = "blue";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(line.points[0].x, line.points[0].y);
+        for(let i=1; i < line.points.length; i++){
+          ctx.lineTo(line.points[i].x, line.points[i].y);
+        }
+        ctx.stroke();
+      }
+    }
+    // Data nets user routed
+    ctx.strokeStyle = "black";
+    ctx.lineWidth = 2;
+    lines.forEach(line => {
+      ctx.beginPath();
+      ctx.moveTo(line.points[0].x, line.points[0].y);
+      for(let i=1; i<line.points.length; i++){
+        ctx.lineTo(line.points[i].x, line.points[i].y);
+      }
+      ctx.stroke();
+    });
+  }
+
+  // Draw routed power net tracks during power plan stage
+  function drawPowerNetTracks(){
+    ["VDD","VSS"].forEach(net =>{
+      routedPowerTracks[net].forEach(track => {
+        if(!layerVisibility[track.layer.split("->")[0]]) return;
+        ctx.strokeStyle = net === "VDD" ? "#d22" : "#292";
+        ctx.lineWidth = metalLayers.find(l => l.name === track.layer.split("->")[0])?.width || 4;
+        ctx.beginPath();
+        ctx.moveTo(track.points[0].x, track.points[0].y);
+        for(let i=1; i<track.points.length; i++){
+          ctx.lineTo(track.points[i].x, track.points[i].y);
+        }
+        ctx.stroke();
+      });
+    });
+  }
+
+  // Draw CTS routing network lines (layer separated)
+  function drawCTSNetwork(){
+    for(let line of routedCTSNetwork){
+      if(!layerVisibility[line.layer]) continue;
+      let col = {"M5":"#297ab9", "M6":"#e67e22", "M7":"#d22"}[line.layer] || "#2964d0";
+      ctx.strokeStyle = col;
+      ctx.lineWidth = metalLayers.find(l => l.name === line.layer)?.width || 4;
+      ctx.beginPath();
+      ctx.moveTo(line.points[0].x, line.points[0].y);
+      for(let i=1; i<line.points.length; i++){
+        ctx.lineTo(line.points[i].x, line.points[i].y);
+      }
+      ctx.stroke();
+    }
+  }
+
+  // Draw vias circles
+  function drawViaLayer(viaName){
+    if(!layerVisibility[viaName]) return;
+    const via = viaLayers.find(v=>v.name === viaName);
+    if(!via) return;
+
+    let vias = viaLocations[viaName] || [];
+    ctx.fillStyle = via.color;
+    vias.forEach(({x,y,id}) => {
+      ctx.beginPath();
+      ctx.arc(x,y,4,0,2*Math.PI);
+      ctx.fill();
+
+      ctx.fillStyle = "#111";
+      ctx.font = "8px monospace";
+      ctx.textAlign = "center";
+      ctx.fillText(id,x,y+12);
+      ctx.fillStyle = via.color;
+    });
+  }
+  function drawAllVias(){
+    viaLayers.forEach(v => drawViaLayer(v.name));
+  }
+
+  // Vias data setup corresponding to layers intersections (approximate)
+  let viaLocations = {};
+  function initializeViaLocations(){
+    viaLocations = {};
+    const pitchM7 = 50, pitchM6 =50, pitchM5=60, pitchM4=70, pitchM3 = pitch, pitchM2 = stdCellWidth*2;
+    viaLocations["via56"] = [];
+    let idCounter = 0;
+    for(let y=core.y; y<=core.y+core.h; y+= pitchM7){
+      for(let x=core.x; x<=core.x+core.w; x+= pitchM6){
+        viaLocations["via56"].push({x:x, y:y, id:`via56_${idCounter++}`});
+      }
+    }
+    viaLocations["via45"] = [];
+    idCounter=0;
+    for(let y=core.y; y<=core.y+core.h; y+= pitchM5){
+      for(let x=core.x; x<=core.x+core.w; x+= pitchM6){
+        viaLocations["via45"].push({x:x, y:y+20, id:`via45_${idCounter++}`});
+      }
+    }
+    viaLocations["via34"] = [];
+    idCounter=0;
+    for(let y=core.y; y<=core.y+core.h; y+= pitchM5){
+      for(let x=core.x; x<=core.x+core.w; x+= pitchM4){
+        viaLocations["via34"].push({x:x+20, y:y+20, id:`via34_${idCounter++}`});
+      }
+    }
+    viaLocations["via23"] = [];
+    idCounter=0;
+    for(let y=core.y; y<=core.y+core.h; y+= pitchM3){
+      for(let x=core.x; x<=core.x+core.w; x+= pitchM4){
+        viaLocations["via23"].push({x:x+20, y:y+(pitchM3/3), id:`via23_${idCounter++}`});
+      }
+    }
+    viaLocations["via12"] = [];
+    idCounter=0;
+    for(let y=core.y; y<=core.y+core.h; y+= pitch){
+      for(let x=core.x; x<=core.x+core.w; x+= pitchM2){
+        viaLocations["via12"].push({x:x, y:y+(pitch/3), id:`via12_${idCounter++}`});
+      }
+    }
+    viaLocations["via01"] = [];
+    idCounter=0;
+    for(let y=core.y; y<=core.y+core.h; y+= pitch){
+      for(let x=core.x; x<=core.x+core.w; x+= pitchM2){
+        viaLocations["via01"].push({x:x, y:y, id:`via01_${idCounter++}`});
+      }
+    }
+  }
+
+  // Mouse hover tooltip showing metal layer and net type info
+  function onMouseMove(event){
+    const rect = canvas.getBoundingClientRect();
+    const mx = event.clientX - rect.left;
+    const my = event.clientY - rect.top;
+
+    // Check if near any routedCTSNetwork lines first
+    function nearPolyline(points){
+      const tolerance = 5;
+      for(let i=0; i<points.length-1; i++){
+        const p1 = points[i];
+        const p2 = points[i+1];
+        if(distToSegment(mx,my,p1,p2) <= tolerance) return true;
+      }
+      return false;
+    }
+
+    function distToSegment(px, py, p1, p2){
+      let x = px, y= py;
+      let x1= p1.x, y1= p1.y, x2= p2.x, y2= p2.y;
+      let A= x - x1, B= y - y1, C= x2 - x1, D= y2 - y1;
+      let dot = A*C + B*D, len_sq= C*C + D*D, param = -1;
+      if(len_sq !== 0) param = dot / len_sq;
+      let xx, yy;
+      if(param <0){
+        xx = x1; yy = y1;
+      } else if (param > 1){
+        xx = x2; yy = y2;
+      } else {
+        xx = x1 + param * C;
+        yy = y1 + param * D;
+      }
+      let dx = x - xx, dy = y - yy;
+      return Math.sqrt(dx*dx + dy*dy);
+    }
+
+    // Check CTS lines
+    for(let line of routedCTSNetwork){
+      if(!layerVisibility[line.layer]) continue;
+      if(nearPolyline(line.points)){
+        tooltip.textContent = `${line.layer} CLK`;
+        showTooltip(event);
+        return;
+      }
+    }
+    // Power nets
+    for(let net of ["VDD","VSS"]){
+      for(let track of routedPowerTracks[net]){
+        if(!layerVisibility[track.layer.split("->")[0]]) continue;
+        if(nearPolyline(track.points)){
+          tooltip.textContent = `${track.layer.split("->")[0]} ${net}`;
+          showTooltip(event);
+          return;
+        }
+      }
+    }
+    // Data nets
+    for(let line of routedDataNetwork){
+      if(!layerVisibility[line.layer]) continue;
+      if(nearPolyline(line.points)){
+        tooltip.textContent = `${line.layer} DATA`;
+        showTooltip(event);
+        return;
+      }
+    }
+
+    // Check pins (top power pins only)
+    const blocks = [...macros, ...stdCells];
+    for(let b of blocks){
+      if(!layerVisibility["M1"]) break;
+      if (mx > b.x + b.w*0.35 && mx < b.x + b.w*0.65) {
+        if (my > b.y - stdCellHeight * 0.15 && my < b.y - stdCellHeight * 0.07) {
+          tooltip.textContent = "M1 VDD";
+          showTooltip(event);
+          return;
+        }
+        if (my > b.y - stdCellHeight * 0.07 && my < b.y) {
+          tooltip.textContent = "M1 VSS";
+          showTooltip(event);
+          return;
+        }
+      }
+      // clock pin left bar region
+      if (mx > b.x - stdCellHeight *0.15 && mx < b.x && my > b.y - stdCellHeight*0.15 && my < b.y + stdCellHeight*0.15) {
+        tooltip.textContent = "M1 CLK";
+        showTooltip(event);
+        return;
+      }
+    }
+
+    // Check ports
+    const portsAll = [...powerPorts, ...dataPorts, clockPort];
+    for(let port of portsAll){
+      if(mx > port.x && mx < port.x + port.w &&
+         my > port.y && my < port.y + port.h){
+          tooltip.textContent = `${port.net} Port`;
+          showTooltip(event);
+          return;
+      }
+    }
+
+    hideTooltip();
+  }
+
+  function showTooltip(event){
+    tooltip.style.left = event.clientX + 15 + "px";
+    tooltip.style.top = event.clientY + 15 + "px";
+    tooltip.style.visibility = "visible";
+  }
+  function hideTooltip(){
+    tooltip.style.visibility = "hidden";
+  }
+
+  canvas.addEventListener("mousemove", onMouseMove);
+
+  // Timer init
+  function timerStart() {
+    time = 0; score = 0;
+    if(timerInterval) clearInterval(timerInterval);
+    timerInterval = setInterval(() => {
+      time++;
+      updateStatus();
+    }, 1000);
+  }
+
+  // Initialize power grid, vias, and default layout
+  function initializeGridAndVias(){
+    metalTrunks = {};
+    viaLocations = {};
+    // M7 horizontal, 50px pitch
+    metalTrunks["M7"] = [];
+    for(let y=core.y; y <= core.y + core.h; y+=50){
+      metalTrunks["M7"].push({x1: core.x, y1: y, x2: core.x + core.w, y2: y});
+    }
+    // M6 vertical, 50px pitch
+    metalTrunks["M6"] = [];
+    for(let x=core.x; x<= core.x + core.w; x+=50){
+      metalTrunks["M6"].push({x1: x, y1: core.y, x2: x, y2: core.y + core.h});
+    }
+
+    // M5 horizontal, 60px pitch (clock)
+    metalTrunks["M5"] = [];
+    for(let y=core.y; y <= core.y + core.h; y+=60){
+      metalTrunks["M5"].push({x1: core.x, y1: y + 20, x2: core.x + core.w, y2: y + 20});
+    }
+
+    // M4 vertical, 70px pitch (clock)
+    metalTrunks["M4"] = [];
+    for(let x=core.x; x<= core.x + core.w; x+=70){
+      metalTrunks["M4"].push({x1: x + 20, y1: core.y, x2: x + 20, y2: core.y + core.h});
+    }
+
+    // M3 horizontal, pitch spacing (data)
+    metalTrunks["M3"] = [];
+    for(let y=core.y; y <= core.y + core.h; y+= pitch){
+      metalTrunks["M3"].push({x1: core.x, y1: y + pitch/3, x2: core.x + core.w, y2: y + pitch/3});
+    }
+
+    // M2 vertical power rails (std cells)
+    metalTrunks["M2"] = [];
+    for(let x=core.x; x <= core.x + core.w; x += stdCellWidth*2){
+      metalTrunks["M2"].push({x1: x, y1: core.y, x2: x, y2: core.y + core.h});
+    }
+
+    // M1 horizontal rails (std cells)
+    metalTrunks["M1"] = [];
+    for(let y=core.y; y <= core.y + core.h; y+= pitch){
+      metalTrunks["M1"].push({x1: core.x, y1: y, x2: core.x + core.w, y2: y});
+    }
+
+    // Vias between layers - assembled at grid intersections
+    viaLocations["via56"] = [];
+    let cnt = 0;
+    for(let y=core.y; y <= core.y + core.h; y+=50){
+      for(let x=core.x; x<= core.x+ core.w; x+= 50){
+        viaLocations["via56"].push({x: x, y: y, id: `via56_${cnt++}`});
+      }
+    }
+    viaLocations["via45"] = [];
+    cnt = 0;
+    for(let y=core.y; y <= core.y + core.h; y+=60){
+      for(let x=core.x; x<= core.x+ core.w; x+=50){
+        viaLocations["via45"].push({x: x, y: y + 20, id: `via45_${cnt++}`});
+      }
+    }
+    viaLocations["via34"] = [];
+    cnt = 0;
+    for(let y=core.y; y <= core.y + core.h; y+=60){
+      for(let x=core.x; x<= core.x+ core.w; x+=70){
+        viaLocations["via34"].push({x: x + 20, y: y + 20, id: `via34_${cnt++}`});
+      }
+    }
+    viaLocations["via23"] = [];
+    cnt = 0;
+    for(let y=core.y; y <= core.y + core.h; y+= pitch){
+      for(let x=core.x; x<= core.x+ core.w; x+= 70){
+        viaLocations["via23"].push({x: x + 20, y: y + pitch/3, id: `via23_${cnt++}`});
+      }
+    }
+    viaLocations["via12"] = [];
+    cnt = 0;
+    for(let y=core.y; y <= core.y + core.h; y+= pitch){
+      for(let x=core.x; x<= core.x + core.w; x+= stdCellWidth*2){
+        viaLocations["via12"].push({x:x, y: y + pitch/3, id:`via12_${cnt++}`});
+      }
+    }
+    viaLocations["via01"] = [];
+    cnt = 0;
+    for(let y=core.y; y <= core.y + core.h; y+= pitch){
+      for(let x=core.x; x<= core.x+ core.w; x+= stdCellWidth*2){
+        viaLocations["via01"].push({x:x, y: y, id:`via01_${cnt++}`});
+      }
+    }
+  }
+
+  // Initialization call
+  initializeGridAndVias();
+
+  // Timer function
+  function timerStart(){
+    time=0; score=0;
+    if(timerInterval) clearInterval(timerInterval);
+    timerInterval = setInterval(()=>{
+      time++;
+      updateStatus();
+    }, 1000);
+  }
+
+  // Initialize timer
+  timerStart();
+
+  // Initial drawing
+  drawAll();
+
+  // Layer toggle functionality for all toggles including All button (exclusive toggle)
+  layerButtons.forEach(btn => {
+    btn.addEventListener("click", ()=>{
+      const layer = btn.dataset.layer;
+      if(layer === "all"){
+        const newState = !layerVisibility.all;
+        for(let l in layerVisibility) layerVisibility[l] = newState;
+      } else {
+        layerVisibility[layer] = !layerVisibility[layer];
+        layerVisibility.all = Object.values(layerVisibility).every(v=>v);
+      }
+      updateLayerButtons();
+      drawAll();
+    });
+  });
+
+  function updateLayerButtons(){
+    layerButtons.forEach(btn=>{
+      if(layerVisibility[btn.dataset.layer]){
+        btn.classList.add("active");
+      } else {
+        btn.classList.remove("active");
+      }
+    });
+  }
+  updateLayerButtons();
+
+  // Other interactive event handlers to implement dragging, manual routing, CTS routing, undo, save, check connectivity etc
+  // ... For brevity, can be added stepwise or upon request.
+
+  // Simple drag logic for macros and std cells on placement phases
+  let draggingBlock = null;
+  let dragOffsetX=0, dragOffsetY=0;
+
+  canvas.addEventListener("mousedown", e=>{
+    const rect = canvas.getBoundingClientRect();
+    let mx = e.clientX - rect.left;
+    let my = e.clientY - rect.top;
+    let candidates = [];
+    if(stage === "macroPlacement") candidates = macros;
+    else if(stage === "stdCellManual" || stage === "stdCellAuto") candidates = stdCells;
+
+    for(let block of candidates){
+      if(mx>=block.x && mx<=block.x+block.w && my>=block.y && my<=block.y+block.h){
+        draggingBlock = block;
+        dragOffsetX = mx - block.x;
+        dragOffsetY = my - block.y;
+        break;
+      }
+    }
+  });
+
+  canvas.addEventListener("mousemove", e=>{
+    if(!draggingBlock) return;
+    const rect = canvas.getBoundingClientRect();
+    let mx = e.clientX - rect.left;
+    let my = e.clientY - rect.top;
+
+    let nx = mx - dragOffsetX;
+    let ny = my - dragOffsetY;
+    // Constrain inside core
+    nx = Math.max(core.x, Math.min(nx, core.x + core.w - draggingBlock.w));
+    ny = Math.max(core.y, Math.min(ny, core.y + core.h - draggingBlock.h));
+
+    draggingBlock.x = snapToGrid(nx);
+    draggingBlock.y = snapToGrid(ny);
+    drawAll();
+  });
+
+  canvas.addEventListener("mouseup", e=>{
+    draggingBlock = null;
+  });
+
+  // Tooltip hover handler attached previously
+
+})();
+</script>
+</body>
+</html>
